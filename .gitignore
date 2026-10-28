@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.env
+.venv/
+.jobs/
+takes/
+stems/
+*.mp4
+*.mov
+*.wav
+.cache/

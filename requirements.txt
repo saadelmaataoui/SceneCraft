@@ -1,0 +1,8 @@
+openai
+gradio==5.9.1
+requests
+modal
+numpy
+scipy
+soundfile
+pyloudnorm
