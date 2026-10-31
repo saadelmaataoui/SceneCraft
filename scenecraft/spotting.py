@@ -30,9 +30,16 @@ SOURCE = {
         "id": {"type": "string"},
         "sam_concept": {"type": "string", "description": "one short noun phrase, e.g. 'shoe'"},
         "category": {"type": "string", "enum": ["feet", "moves", "specifics"]},
-        "mode": {"type": "string", "enum": ["impact", "continuous"]},
-        "sound_prompt": {"type": "string"},
-        "approx_times_s": {"type": "array", "items": {"type": "number"}},
+        "mode": {"type": "string", "enum": ["impact", "continuous"],
+                 "description": "impact: a visible contact instant (hit, tap, set down). "
+                                "continuous: sound lasting while it moves (rub, slide, roll)."},
+        "sound_prompt": {"type": "string",
+                         "description": "one sentence for a text-to-audio model: attack, material, "
+                                        "object, action, surface, intensity, mic distance; ends with "
+                                        "'no music, no speech'; no visual words."},
+        "approx_times_s": {"type": "array", "items": {"type": "number"},
+                           "description": "hit times read off the burned-in clock; never invent a "
+                                          "rhythm; empty for continuous."},
     },
 }
 SPOTTING = {
@@ -41,7 +48,13 @@ SPOTTING = {
         "scene": {
             "type": "object", "additionalProperties": False,
             "required": ["location", "acoustics", "ambience_prompt"],
-            "properties": {k: {"type": "string"} for k in ["location", "acoustics", "ambience_prompt"]},
+            "properties": {
+                "location": {"type": "string"},
+                "acoustics": {"type": "string"},
+                "ambience_prompt": {"type": "string",
+                                    "description": "room tone from the acoustics only; never visual "
+                                                   "words; ends with 'no music, no speech'"},
+            },
         },
         "sources": {"type": "array", "items": SOURCE},
     },
@@ -49,14 +62,25 @@ SPOTTING = {
 
 BRIEF = """You are a foley supervisor running a spotting session on a silent clip.
 The clock burned into the top-left corner is the clip time. Read every time from it.
-List each on-screen thing that should make a sound:
+List each sound the clip needs. Split by SOUND, not by object: if the same hands
+both clap and rub, emit two sources (e.g. "hands_clap" impact + "hands_rub" continuous)
+sharing one sam_concept.
 - sam_concept: ONE short noun phrase a segmentation model can find ("shoe", "door", "mug"). Never a list.
 - category: feet (footsteps), moves (cloth and body movement), specifics (props and objects).
-- mode: impact for discrete hits, continuous for sound that lasts while it moves.
-- sound_prompt: ONE isolated hit (impact) or a steady texture (continuous). Name the material,
-  surface, intensity and mic distance. End with: isolated, dry, no music, no speech.
-- approx_times_s: when each hit happens, in seconds. Empty for continuous sources.
-scene.ambience_prompt: the room tone or background for this place, ending with: no music, no speech."""
+- mode: impact ONLY for a visible contact instant (hit, tap, set down, snap shut).
+  continuous for sound that lasts while something moves (rub, slide, zip, roll).
+  When unsure, watch the motion: instant stop = impact, sustained motion = continuous.
+- sound_prompt: one sentence written for a text-to-audio model. Name the attack, material,
+  object, action, surface, intensity and mic distance (close-miked or distant).
+  Impact: start with "Single", describe ONE hit, end with "one hit only, followed by silence".
+  Continuous: describe a steady loopable texture with "no impacts".
+  End every prompt with: no music, no speech.
+  Never use visual words (close-up, white, studio, video, frame, on screen): describe only sound.
+- approx_times_s: read each hit time off the burned-in clock. Never invent an even rhythm;
+  list only hits you actually see. Empty for continuous sources.
+scene.ambience_prompt: the room tone for this place from its ACOUSTICS only
+(e.g. "faint dead-room tone, very dry, no echo, no music, no speech").
+Never mention colors, objects, or what the room looks like."""
 
 
 def upload(path):

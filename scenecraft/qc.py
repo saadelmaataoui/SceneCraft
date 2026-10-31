@@ -7,6 +7,8 @@ one pass so a run always finishes.
 """
 import json
 
+import numpy as np
+
 from scenecraft import mix, sourcing, sync
 from scenecraft.spotting import get_client, upload
 
@@ -18,13 +20,16 @@ QC_SCHEMA = {
         "score": {"type": "integer", "description": "1-10: would a sound editor sign this off?"},
         "issues": {"type": "array", "items": {
             "type": "object", "additionalProperties": False,
-            "required": ["source_id", "time_s", "problem", "fix_prompt"],
+            "required": ["source_id", "time_s", "problem", "fix_prompt", "fix_mode"],
             "properties": {
                 "source_id": {"type": "string"},
                 "time_s": {"type": "number"},
                 "problem": {"type": "string", "enum": ["wrong_sound", "missing", "unwanted",
                                                         "too_loud", "too_quiet", "off_sync"]},
                 "fix_prompt": {"type": "string", "description": "new sound prompt if the sound is wrong, else empty"},
+                "fix_mode": {"type": "string", "enum": ["", "impact", "continuous"],
+                             "description": "the true sound's mode when it differs from the "
+                                            "source's mode, else empty"},
             },
         }},
     },
@@ -32,11 +37,17 @@ QC_SCHEMA = {
 
 BRIEF = """You are a re-recording mixer signing off a foley mix against picture.
 Watch and listen to this clip. The known sound sources are listed below. Score the mix
-1-10 and list any problems, each tied to a source_id and a time in seconds."""
+1-10 and list any problems, each tied to a source_id and a time in seconds.
+For wrong_sound, write fix_prompt as one sentence for a text-to-audio model: attack,
+material, object, action, surface, intensity, mic distance (close-miked or distant),
+ending with "no music, no speech". No visual words. One hit with "one hit only,
+followed by silence" for impact; a steady texture with "no impacts" for continuous.
+Set fix_mode only when the true sound's mode differs from the source's mode."""
 
 
 def review(qc_mp4, cue):
-    sources_desc = json.dumps([{"id": s["id"], "sound_prompt": s["sound_prompt"]} for s in cue["sources"]])
+    sources_desc = json.dumps([{"id": s["id"], "mode": s["mode"],
+                                "sound_prompt": s["sound_prompt"]} for s in cue["sources"]])
     resp = get_client().responses.create(
         model=MODEL,
         instructions=BRIEF,
@@ -57,7 +68,19 @@ async def _apply_fix(issue, cue, envelopes, takes_bytes):
         return
 
     if problem == "wrong_sound" and issue.get("fix_prompt"):
-        takes_bytes[sid] = await sourcing.source(issue["fix_prompt"], source["mode"])
+        new_mode = issue.get("fix_mode") or source["mode"]
+        if new_mode not in ("impact", "continuous"):
+            new_mode = source["mode"]
+        takes_bytes[sid] = await sourcing.source(issue["fix_prompt"], new_mode)
+        if new_mode != source["mode"]:
+            source["mode"] = new_mode
+            if new_mode == "continuous":
+                # No motion track at QC stage: flat half-level bed, hits dropped.
+                n = round(cue["clip"]["duration_s"] * cue["clip"].get("sam_fps", sync.FPS))
+                envelopes[sid] = np.full(max(n, 1), 0.5, dtype=float)
+                cue["events"] = [e for e in cue["events"] if e["source_id"] != sid]
+            else:
+                envelopes.pop(sid, None)
     elif problem in ("too_loud", "too_quiet"):
         delta = -4.0 if problem == "too_loud" else 4.0
         for e in cue["events"]:

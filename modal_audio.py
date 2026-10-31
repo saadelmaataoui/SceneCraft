@@ -12,13 +12,32 @@ import modal
 app = modal.App("scenecraft-audio")
 weights = modal.Volume.from_name("scenecraft-weights", create_if_missing=True)
 
-gen_image = (modal.Image.debian_slim(python_version="3.10")
-             .apt_install("ffmpeg", "git")
-             .pip_install("audiocraft", "soundfile")
-             .env({"HF_HOME": "/weights/hf"}))
-judge_image = (modal.Image.debian_slim(python_version="3.10")
-               .pip_install("audiobox_aesthetics", "soundfile")
-               .env({"HF_HOME": "/weights/hf"}))
+# audiocraft 1.3.0 hard-pins av==11.0.0, which is sdist-only on PyPI now and
+# needs FFmpeg headers to build. Install its deps ourselves with an av that
+# ships wheels, then audiocraft with --no-deps so pip can't swap av back.
+gen_image = (
+    modal.Image.debian_slim(python_version="3.11")
+    .apt_install("ffmpeg", "git")
+    .pip_install(
+        "av==12.3.0",
+        "torch==2.1.0", "torchaudio==2.1.0", "torchvision==0.16.0", "torchtext==0.16.0",
+        "xformers<0.0.23", "numpy<2",
+        "transformers>=4.31.0,<4.46",  # newer releases drop torch 2.1
+        "spacy==3.7.5",  # 3.8 pulls a numpy-2 thinc
+        "click<8.2",  # spacy imports click.parser; newer typer no longer pulls click in
+        "einops", "flashy>=0.0.1", "hydra-core>=1.1", "hydra_colorlog", "julius",
+        "num2words", "sentencepiece", "huggingface_hub", "tqdm", "demucs", "librosa",
+        "torchmetrics", "encodec", "protobuf", "soundfile",
+    )
+    .pip_install("audiocraft==1.3.0", extra_options="--no-deps")
+    .env({"HF_HOME": "/weights/hf"})
+)
+
+judge_image = (
+    modal.Image.debian_slim(python_version="3.11")
+    .pip_install("audiobox_aesthetics", "soundfile", "requests")  # it imports requests without declaring it
+    .env({"HF_HOME": "/weights/hf"})
+)
 
 
 def wav_bytes(x, sr):
@@ -28,7 +47,9 @@ def wav_bytes(x, sr):
     return buf.getvalue()
 
 
-@app.cls(gpu="L4", image=gen_image, volumes={"/weights": weights}, scaledown_window=600)
+# GPU lists are fallbacks in order: Modal takes the first type it has free,
+# so an L4 shortage doesn't leave calls queued forever.
+@app.cls(gpu=["L4", "A10G", "T4"], image=gen_image, volumes={"/weights": weights}, scaledown_window=600)
 class Foley:
     @modal.enter()
     def load(self):
@@ -42,7 +63,7 @@ class Foley:
         return [wav_bytes(w[0].cpu().numpy(), self.model.sample_rate) for w in wavs]
 
 
-@app.cls(gpu="T4", image=judge_image, volumes={"/weights": weights}, scaledown_window=600)
+@app.cls(gpu=["T4", "L4", "A10G"], image=judge_image, volumes={"/weights": weights}, scaledown_window=600)
 class Judge:
     @modal.enter()
     def load(self):

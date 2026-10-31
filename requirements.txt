@@ -1,5 +1,6 @@
 openai
 gradio==5.9.1
+pydantic<2.11  # 2.11+ breaks gradio 5.9's API-schema parser
 requests
 modal
 numpy

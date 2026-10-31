@@ -69,7 +69,7 @@ def stems_html(stem_paths):
         players.append(
             f'<div style="margin:6px 0"><div style="font:12px monospace;color:#9BA2AF;'
             f'margin-bottom:2px">{html.escape(source_id)}</div>'
-            f'<audio controls style="width:100%" src="/file={abspath}"></audio></div>'
+            f'<audio controls style="width:100%" src="/gradio_api/file={abspath}"></audio></div>'
         )
     return "".join(players)
 

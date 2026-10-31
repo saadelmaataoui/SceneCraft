@@ -66,7 +66,7 @@ def prepare(take_path: str, out_dir: str) -> Clip:
     if os.name == "nt" and shutil.which("ffmpeg"):
         win_font = r"C\:/Windows/Fonts/arial.ttf"
         if os.path.exists(r"C:\Windows\Fonts\arial.ttf"):
-            fontfile = f":fontfile={win_font}"
+            fontfile = f":fontfile='{win_font}'"  # quoted, like text=, so the \: survives
     _run("ffmpeg", "-y", "-i", master_path,
          "-vf", (f"fps={SAM_FPS},scale=-2:480,"
                  r"drawtext=text='%{pts\:hms}':x=12:y=12:fontsize=26:"

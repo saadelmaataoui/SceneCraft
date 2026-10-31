@@ -7,7 +7,7 @@ import hashlib
 import os
 import pickle
 
-PIPELINE_VERSION = "1"
+PIPELINE_VERSION = "2"
 CACHE_DIR = os.environ.get("SCENECRAFT_CACHE_DIR", ".cache")
 
 
